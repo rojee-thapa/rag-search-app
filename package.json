@@ -9,13 +9,21 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@langchain/openai": "^1.2.4",
+    "@langchain/textsplitters": "^1.0.1",
+    "@supabase/supabase-js": "^2.93.3",
+    "langchain": "^1.2.16",
+    "mammoth": "^1.11.0",
     "next": "16.1.6",
+    "openai": "^6.17.0",
+    "pdf2json": "^4.0.2",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
