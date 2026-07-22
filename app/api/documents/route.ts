@@ -1,10 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import type { ChunkMetadata } from '../../types';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || anonKey;
-const supabase = createClient(url, anonKey);
+// The documents/query_cache tables have RLS enabled with no anon policies,
+// so all DB access must go through the service role key (server-only).
+const supabase = createClient(url, serviceKey);
 const supabaseStorage = createClient(url, serviceKey);
 
 export async function GET(req: Request) {
@@ -26,7 +29,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: 'Document not found' }, { status: 404 });
       }
 
-      const meta = documents[0].metadata;
+      const meta = documents[0].metadata as Partial<ChunkMetadata> | null;
       const fileName = meta?.file_name || 'document';
       const fileType = meta?.file_type || 'application/octet-stream';
       const filePath = meta?.file_path || `${id}.${fileName.split('.').pop() || 'pdf'}`;
@@ -71,7 +74,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: 'Document not found' }, { status: 404 });
       }
 
-      const m = chunks[0].metadata || {};
+      const m = (chunks[0].metadata ?? {}) as Partial<ChunkMetadata>;
       return NextResponse.json({
         id,
         file_name: m.file_name || 'Unknown',
@@ -79,7 +82,7 @@ export async function GET(req: Request) {
         file_size: m.file_size || 0,
         upload_date: m.upload_date || new Date().toISOString(),
         total_chunks: chunks.length,
-        fullText: chunks.map((c: any) => c.content).join('\n\n'),
+        fullText: chunks.map((c: { content: string }) => c.content).join('\n\n'),
         file_url: m.file_url,
         file_path: m.file_path
       });
@@ -97,7 +100,7 @@ export async function GET(req: Request) {
     // Deduplicate documents by document_id
     // Since each document is split into multiple chunks, we need to group them
     const map = new Map();
-    documents?.forEach((doc: any) => {
+    documents?.forEach((doc: { metadata: Partial<ChunkMetadata> | null }) => {
       const m = doc.metadata;
       if (m?.document_id && !map.has(m.document_id)) {
         map.set(m.document_id, {
@@ -114,8 +117,10 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.json({ documents: Array.from(map.values()) });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'Request failed'
+    }, { status: 500 });
   }
 }
 
@@ -133,7 +138,7 @@ export async function DELETE(req: Request) {
       .eq('metadata->>document_id', id)
       .limit(1);
 
-    const filePath = docs?.[0]?.metadata?.file_path;
+    const filePath = (docs?.[0]?.metadata as Partial<ChunkMetadata> | undefined)?.file_path;
 
     // Delete file from storage
     if (filePath) {
@@ -150,8 +155,18 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Cached answers may cite the deleted document — invalidate them all.
+    // Best-effort: never fail the delete over a cache cleanup problem.
+    const { error: cacheError } = await supabaseStorage
+      .from('query_cache')
+      .delete()
+      .gte('id', 0);
+    if (cacheError) console.error('query_cache invalidation failed:', cacheError.message);
+
     return NextResponse.json({ success: true, fileDeleted: !!filePath });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'Request failed'
+    }, { status: 500 });
   }
 }

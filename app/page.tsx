@@ -1,12 +1,13 @@
 'use client';
 import { useState } from 'react';
 import Navigation from './components/Navigation';
+import type { SearchResult } from './types';
 
 export default function Home() {
   const [query, setQuery] = useState('');
   const [answer, setAnswer] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sources, setSources] = useState<any[]>([]);
+  const [sources, setSources] = useState<SearchResult[]>([]);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -26,8 +27,8 @@ export default function Home() {
         setAnswer(data.answer || 'No answer generated'); 
         setSources(data.sources || []); 
       }
-    } catch (error: any) {
-      setAnswer(`Error: ${error.message}`);
+    } catch (error) {
+      setAnswer(`Error: ${error instanceof Error ? error.message : 'Search request failed'}`);
     } finally {
       setLoading(false);
     }
